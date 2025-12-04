@@ -8,7 +8,7 @@ import logging
 import config_manager
 import data_loader
 
-def run():
+def run_standard_validation():
     """
     자동 검증 모드 (Auto Validation Mode) 실행 함수
     PLC 및 Vision 데이터를 로드하고, Work Center (Unit) 별로 필터링하여
@@ -375,3 +375,141 @@ def run():
             except Exception as e:
                 st.error(f"An error occurred during visualization: {e}")
                 logging.exception("Error in Auto Validation Visualization")
+
+def run_weighing_data_filtering():
+    """
+    Weighing Data Filtering Mode
+    엑셀 파일을 업로드받아 전후 시간을 필터링하고 그래프를 그려주는 기능
+    """
+    st.header("Weighing Data Filtering")
+    
+    # 1. Excel File Upload
+    uploaded_file = st.file_uploader("Upload Weighing Data (Excel)", type=["xlsx", "xls"])
+    
+    if uploaded_file:
+        try:
+            # Load Excel file
+            df = pd.read_excel(uploaded_file)
+            st.success(f"Loaded {len(df)} rows from {uploaded_file.name}")
+            
+            st.markdown("### Data Preview")
+            st.dataframe(df.head())
+            
+            # 2. Column Selection
+            st.markdown("### Column Selection")
+            columns = df.columns.tolist()
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                time_col = st.selectbox("Select Time Column", columns, index=0 if columns else None)
+            with c2:
+                value_col = st.selectbox("Select Value Column", columns, index=1 if len(columns) > 1 else 0)
+                
+            if time_col and value_col:
+                # Convert time column to datetime
+                try:
+                    df[time_col] = pd.to_datetime(df[time_col])
+                except Exception as e:
+                    st.error(f"Error converting '{time_col}' to datetime: {e}")
+                    return
+
+                # 3. Time Filtering
+                st.markdown("### Time Filtering")
+                
+                min_time = df[time_col].min().to_pydatetime()
+                max_time = df[time_col].max().to_pydatetime()
+                
+                # Slider for time range
+                time_range = st.slider(
+                    "Select Time Range",
+                    min_value=min_time,
+                    max_value=max_time,
+                    value=(min_time, max_time),
+                    format="YYYY-MM-DD HH:mm:ss"
+                )
+                
+                # Filter data
+                mask = (df[time_col] >= time_range[0]) & (df[time_col] <= time_range[1])
+                df_filtered = df[mask].copy()
+                
+                # 4. Data Correction (Cumulative Weight)
+                st.markdown("### Data Correction")
+                use_correction = st.checkbox("Enable Cumulative Correction (Stitch Drops)", value=False)
+                
+                if use_correction:
+                    drop_threshold = st.number_input(
+                        "Drop Threshold (Negative Value)", 
+                        value=-1000.0, 
+                        step=10.0,
+                        help="If the difference between consecutive points is less than this value, it's considered a drop."
+                    )
+                    
+                    # Correction Algorithm
+                    values = df_filtered[value_col].values
+                    corrected_values = []
+                    current_offset = 0
+                    
+                    if len(values) > 0:
+                        corrected_values.append(values[0])
+                        for i in range(1, len(values)):
+                            delta = values[i] - values[i-1]
+                            if delta < drop_threshold:
+                                # Drop detected!
+                                # Calculate offset to make the current point continue from the previous point
+                                # We want: corrected_current ~= corrected_prev + (small expected increase)
+                                # But we don't know the expected increase.
+                                # Simple approach: Treat the drop as if it didn't happen.
+                                # The 'gap' is the drop amount. We add that gap back to all future points.
+                                # gap = values[i-1] - values[i]
+                                # current_offset += gap
+                                
+                                # Better approach for "stitching":
+                                # We want the new segment to start exactly where the old one ended?
+                                # Or just remove the negative delta?
+                                # If we just ignore the negative delta, we assume 0 change at that instant.
+                                # Let's try: offset += (values[i-1] - values[i])
+                                current_offset += (values[i-1] - values[i])
+                            
+                            corrected_values.append(values[i] + current_offset)
+                            
+                    df_filtered[f'{value_col}_corrected'] = corrected_values
+                    plot_y_col = f'{value_col}_corrected'
+                    st.info(f"Correction applied. Total offset accumulated: {current_offset:.2f}")
+                else:
+                    plot_y_col = value_col
+
+                st.write(f"Filtered Data: {len(df_filtered)} rows ({len(df_filtered)/len(df)*100:.1f}%)")
+                
+                # 5. Visualization
+                if not df_filtered.empty:
+                    fig = px.line(df_filtered, x=time_col, y=plot_y_col, title=f"{plot_y_col} over Time")
+                    st.plotly_chart(fig, use_container_width=True)
+                    
+                    # Download filtered data
+                    csv = df_filtered.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Filtered Data (CSV)",
+                        data=csv,
+                        file_name='filtered_weighing_data.csv',
+                        mime='text/csv'
+                    )
+                else:
+                    st.warning("No data selected with current filters.")
+                    
+        except Exception as e:
+            st.error(f"Error processing file: {e}")
+
+def run():
+    """
+    Auto Validation Entry Point
+    Sub-navigation for Standard Validation and Weighing Data Filtering
+    """
+    # Sidebar Sub-navigation
+    st.sidebar.markdown("---")
+    sub_mode = st.sidebar.radio("Auto Validation Menu", ["Standard Validation", "Weighing Data Filtering"])
+    
+    if sub_mode == "Standard Validation":
+        run_standard_validation()
+    elif sub_mode == "Weighing Data Filtering":
+        run_weighing_data_filtering()
+
