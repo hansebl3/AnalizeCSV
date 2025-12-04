@@ -29,7 +29,7 @@ def run_standard_validation():
         
         if av_source_type == "Database":
             # DB 연결 정보 (공통)
-            st.subheader("Database Connection (Shared)")
+            st.subheader("Database Connection")
             c1, c2, c3 = st.columns(3)
             with c1:
                 host = st.text_input("Host", value=config.get("host", "localhost"), key="av_host")
@@ -205,8 +205,8 @@ def run_standard_validation():
                         key=f"slider_wc_{wc}"
                     )
                 with c2:
-                    d5017_min = st.number_input(f"D5017 Min (Unit {wc})", value=default_min_val, key=f"min_wc_{wc}")
-                    d5017_max = st.number_input(f"D5017 Max (Unit {wc})", value=default_max_val, key=f"max_wc_{wc}")
+                    d5017_min = st.number_input(f"Pressure Min (Unit {wc})", value=default_min_val, key=f"min_wc_{wc}")
+                    d5017_max = st.number_input(f"Pressure Max (Unit {wc})", value=default_max_val, key=f"max_wc_{wc}")
 
                 # 2. 필터링 적용 및 그래프 그리기
                 mask_time = (df_wc['ent_date'] >= pd.to_datetime(time_range[0])) & (df_wc['ent_date'] <= pd.to_datetime(time_range[1]))
@@ -214,9 +214,9 @@ def run_standard_validation():
                 
                 df_wc_filtered = df_wc[mask_time & mask_val]
                 
-                st.markdown(f"**D5017 Trend (Filtered Preview) - {len(df_wc_filtered)} rows**")
+                st.markdown(f"**Pressure Trend (Filtered Preview) - {len(df_wc_filtered)} rows**")
                 if not df_wc_filtered.empty:
-                    fig = px.line(df_wc_filtered, x='ent_date', y=d5017_col, title=f"D5017 over Time (Unit {wc}) - Filtered")
+                    fig = px.line(df_wc_filtered, x='ent_date', y=d5017_col, title=f"Pressure over Time (Unit {wc}) - Filtered")
                     st.plotly_chart(fig, use_container_width=True, key=f"preview_wc_{wc}", config={'displayModeBar': True})
                 else:
                     st.warning("No data selected with current filters.")
