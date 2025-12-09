@@ -194,63 +194,70 @@ def run():
             )
             st.plotly_chart(fig_full, use_container_width=True)
 
-            # 5. 시간 범위 슬라이더 (Time Range Slider)
-            st.subheader("Time Range Filter")
-            min_date = df_filtered[time_col].min().to_pydatetime()
-            max_date = df_filtered[time_col].max().to_pydatetime()
+            # 5. 시간 범위 슬라이더 및 분석 설정 (Form으로 감싸기)
+            st.subheader("Analysis Settings")
             
-            if min_date == max_date:
-                st.warning("Not enough data points for a range slider.")
-                start_date, end_date = min_date, max_date
-            else:
-                start_date, end_date = st.slider(
-                    "Select Time Range",
-                    min_value=min_date,
-                    max_value=max_date,
-                    value=(min_date, max_date),
-                    format="YYYY-MM-DD HH:mm"
+            with st.form("analysis_form"):
+                st.markdown("#### Time Range Filter")
+                min_date = df_filtered[time_col].min().to_pydatetime()
+                max_date = df_filtered[time_col].max().to_pydatetime()
+                
+                if min_date == max_date:
+                    st.warning("Not enough data points for a range slider.")
+                    start_date, end_date = min_date, max_date
+                else:
+                    start_date, end_date = st.slider(
+                        "Select Time Range",
+                        min_value=min_date,
+                        max_value=max_date,
+                        value=(min_date, max_date),
+                        format="YYYY-MM-DD HH:mm"
+                    )
+
+                st.markdown("#### Graph Settings")
+                custom_label = st.text_input("Custom Graph Label (Y-Axis)", value=data_col)
+
+                c1, c2 = st.columns(2)
+                with c1:
+                    x_label = st.text_input("X-Axis Label", value=time_col)
+                with c2:
+                    y_label = st.text_input("Y-Axis Label", value=custom_label)
+
+                submitted = st.form_submit_button("Generate Charts")
+
+            if submitted:
+                # 시간 범위 필터링 적용
+                mask = (df_filtered[time_col] >= pd.to_datetime(start_date)) & (df_filtered[time_col] <= pd.to_datetime(end_date))
+                df_final = df_filtered.loc[mask].copy()
+
+                # 6. 차트 분석 (Analysis) - submitted 상태일 때만 렌더링
+                st.subheader("Analysis Results")
+                
+                chart_col1, chart_col2 = st.columns(2)
+
+                with chart_col1:
+                    st.markdown("### Time Series Trend")
+                    fig_line = visualizer.create_line_chart(
+                        df_final, time_col, data_col, f"{custom_label} over Time", x_label, y_label
+                    )
+                    st.plotly_chart(fig_line, use_container_width=True)
+
+                with chart_col2:
+                    st.markdown("### Histogram")
+                    fig_hist = visualizer.create_histogram(
+                        df_final, data_col, f"Distribution of {custom_label}", x_label, y_label, nbins=300
+                    )
+                    st.plotly_chart(fig_hist, use_container_width=True)
+
+                # 7. 데이터 내보내기 (Export Data)
+                st.subheader("Export Data")
+                csv = df_final.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Filtered Data as CSV",
+                    data=csv,
+                    file_name='filtered_data.csv',
+                    mime='text/csv',
                 )
-
-            # 시간 범위 필터링 적용
-            mask = (df_filtered[time_col] >= pd.to_datetime(start_date)) & (df_filtered[time_col] <= pd.to_datetime(end_date))
-            df_final = df_filtered.loc[mask].copy()
-
-            # 6. 차트 분석 (Analysis)
-            st.subheader("Analysis")
-            
-            custom_label = st.text_input("Custom Graph Label (Y-Axis)", value=data_col)
-
-            c1, c2 = st.columns(2)
-            with c1:
-                x_label = st.text_input("X-Axis Label", value=time_col)
-            with c2:
-                y_label = st.text_input("Y-Axis Label", value=custom_label)
-
-            chart_col1, chart_col2 = st.columns(2)
-
-            with chart_col1:
-                st.markdown("### Time Series Trend")
-                fig_line = visualizer.create_line_chart(
-                    df_final, time_col, data_col, f"{custom_label} over Time", x_label, y_label
-                )
-                st.plotly_chart(fig_line, use_container_width=True)
-
-            with chart_col2:
-                st.markdown("### Histogram")
-                fig_hist = visualizer.create_histogram(
-                    df_final, data_col, f"Distribution of {custom_label}", x_label, y_label, nbins=300
-                )
-                st.plotly_chart(fig_hist, use_container_width=True)
-
-            # 7. 데이터 내보내기 (Export Data)
-            st.subheader("Export Data")
-            csv = df_final.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Filtered Data as CSV",
-                data=csv,
-                file_name='filtered_data.csv',
-                mime='text/csv',
-            )
 
         except Exception as e:
             st.error(f"Error processing data: {e}")
