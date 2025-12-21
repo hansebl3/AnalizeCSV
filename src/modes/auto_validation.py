@@ -279,14 +279,36 @@ def run_standard_validation():
                     if df_plc_wc.empty:
                         st.warning(f"No PLC data for Unit {wc} with current filters.")
                         continue
+                    
+                    # Calculate Statistics
+                    stats = {}
+                    # PLC stats
+                    stats['Pressure'] = {'mean': df_plc_wc['D5017'].mean(), 'std': df_plc_wc['D5017'].std()}
+                    stats['RPM'] = {'mean': df_plc_wc['D5018'].mean(), 'std': df_plc_wc['D5018'].std()}
+                    
+                    # Vision stats
+                    if not df_vision_wc.empty:
+                        if 'tangent' in df_vision_wc.columns:
+                            stats['Amplitude'] = {'mean': df_vision_wc['tangent'].mean(), 'std': df_vision_wc['tangent'].std()}
+                        if 'distance' in df_vision_wc.columns:
+                            stats['Distance'] = {'mean': df_vision_wc['distance'].mean(), 'std': df_vision_wc['distance'].std()}
+                        if 'angle' in df_vision_wc.columns:
+                            stats['Angle'] = {'mean': df_vision_wc['angle'].mean(), 'std': df_vision_wc['angle'].std()}
+
 
                     # 3x3 Grid Visualization using Subplots
                     fig = make_subplots(
                         rows=3, cols=3,
                         subplot_titles=(
-                            "1. Temperature (Zone 1~4)", "2. Pressure", "3. RPM",
-                            "", "Pressure Histogram", "RPM Histogram",
-                            "Amplitude Histogram", "Distance Histogram", "Angle Histogram"
+                            "1. Temperature (Zone 1~4)", 
+                            f"2. Pressure (Mean={stats['Pressure']['mean']:.2f}, Std={stats['Pressure']['std']:.2f})", 
+                            f"3. RPM (Mean={stats['RPM']['mean']:.2f}, Std={stats['RPM']['std']:.2f})",
+                            "", 
+                            f"Pressure Dist (Range: ±5)", 
+                            f"RPM Dist (Range: ±10)",
+                            f"Amplitude Dist (Range: ±0.1) Mean={stats.get('Amplitude', {}).get('mean', 0):.4f} Std={stats.get('Amplitude', {}).get('std', 0):.4f}" if 'Amplitude' in stats else "Amplitude Dist", 
+                            f"Distance Dist (Range: ±50) Mean={stats.get('Distance', {}).get('mean', 0):.2f} Std={stats.get('Distance', {}).get('std', 0):.2f}" if 'Distance' in stats else "Distance Dist", 
+                            f"Angle Dist (Range: ±3) Mean={stats.get('Angle', {}).get('mean', 0):.2f} Std={stats.get('Angle', {}).get('std', 0):.2f}" if 'Angle' in stats else "Angle Dist"
                         ),
                         vertical_spacing=0.15,
                         horizontal_spacing=0.05
@@ -297,36 +319,77 @@ def run_standard_validation():
                         fig.add_trace(go.Scatter(x=df_plc_wc['ent_date'], y=df_plc_wc[col], mode='lines', name=col, line=dict(color=color)), row=1, col=1)
 
                     # Row 1 Col 2: Pressure
-                    mean_p = df_plc_wc['D5017'].mean()
-                    std_p = df_plc_wc['D5017'].std()
                     fig.add_trace(go.Scatter(x=df_plc_wc['ent_date'], y=df_plc_wc['D5017'], mode='lines', name='Pressure', line=dict(color='blue')), row=1, col=2)
-                    fig.update_xaxes(title_text=f"Mean={mean_p:.2f}, Std={std_p:.2f}", row=1, col=2)
-
+                    
                     # Row 1 Col 3: RPM
-                    mean_r = df_plc_wc['D5018'].mean()
-                    std_r = df_plc_wc['D5018'].std()
                     fig.add_trace(go.Scatter(x=df_plc_wc['ent_date'], y=df_plc_wc['D5018'], mode='lines', name='RPM', line=dict(color='green')), row=1, col=3)
-                    fig.update_xaxes(title_text=f"Mean={mean_r:.2f}, Std={std_r:.2f}", row=1, col=3)
 
                     # Row 2 Col 2: Pressure Histogram
-                    fig.add_trace(go.Histogram(x=df_plc_wc['D5017'], nbinsx=300, name='Pressure Dist', marker_color='blue'), row=2, col=2)
+                    # Range: Mean +- 5
+                    p_mean = stats['Pressure']['mean']
+                    p_range = 5
+                    fig.add_trace(go.Histogram(
+                        x=df_plc_wc['D5017'], 
+                        xbins=dict(start=p_mean-p_range, end=p_mean+p_range, size=(2*p_range)/100),
+                        autobinx=False,
+                        name='Pressure Dist', 
+                        marker_color='blue'
+                    ), row=2, col=2)
+                    fig.update_xaxes(range=[p_mean - p_range, p_mean + p_range], row=2, col=2)
 
                     # Row 2 Col 3: RPM Histogram
-                    fig.add_trace(go.Histogram(x=df_plc_wc['D5018'], nbinsx=300, name='RPM Dist', marker_color='green'), row=2, col=3)
+                    # Range: Mean +- 10
+                    r_mean = stats['RPM']['mean']
+                    r_range = 10
+                    fig.add_trace(go.Histogram(
+                        x=df_plc_wc['D5018'], 
+                        xbins=dict(start=r_mean-r_range, end=r_mean+r_range, size=(2*r_range)/100),
+                        autobinx=False,
+                        name='RPM Dist', 
+                        marker_color='green'
+                    ), row=2, col=3)
+                    fig.update_xaxes(range=[r_mean - r_range, r_mean + r_range], row=2, col=3)
 
                     # Row 3 (Vision Data)
                     if not df_vision_wc.empty:
                         # Row 3 Col 1: Amplitude
-                        if 'tangent' in df_vision_wc.columns:
-                            fig.add_trace(go.Histogram(x=df_vision_wc['tangent'], nbinsx=300, name='Amplitude', marker_color='purple'), row=3, col=1)
+                        if 'Amplitude' in stats:
+                            a_mean = stats['Amplitude']['mean']
+                            a_range = 0.1
+                            fig.add_trace(go.Histogram(
+                                x=df_vision_wc['tangent'], 
+                                xbins=dict(start=a_mean-a_range, end=a_mean+a_range, size=(2*a_range)/100),
+                                autobinx=False,
+                                name='Amplitude', 
+                                marker_color='purple'
+                            ), row=3, col=1)
+                            fig.update_xaxes(range=[a_mean - a_range, a_mean + a_range], row=3, col=1)
                         
                         # Row 3 Col 2: Distance
-                        if 'distance' in df_vision_wc.columns:
-                            fig.add_trace(go.Histogram(x=df_vision_wc['distance'], nbinsx=300, name='Distance', marker_color='orange'), row=3, col=2)
+                        if 'Distance' in stats:
+                            d_mean = stats['Distance']['mean']
+                            d_range = 50
+                            fig.add_trace(go.Histogram(
+                                x=df_vision_wc['distance'], 
+                                xbins=dict(start=d_mean-d_range, end=d_mean+d_range, size=(2*d_range)/100),
+                                autobinx=False,
+                                name='Distance', 
+                                marker_color='orange'
+                            ), row=3, col=2)
+                            fig.update_xaxes(range=[d_mean - d_range, d_mean + d_range], row=3, col=2)
 
                         # Row 3 Col 3: Angle
-                        if 'angle' in df_vision_wc.columns:
-                            fig.add_trace(go.Histogram(x=df_vision_wc['angle'], nbinsx=300, name='Angle', marker_color='teal'), row=3, col=3)
+                        if 'Angle' in stats:
+                            an_mean = stats['Angle']['mean']
+                            an_range = 3
+                            fig.add_trace(go.Histogram(
+                                x=df_vision_wc['angle'], 
+                                xbins=dict(start=an_mean-an_range, end=an_mean+an_range, size=(2*an_range)/100),
+                                autobinx=False,
+                                name='Angle', 
+                                marker_color='teal'
+                            ), row=3, col=3)
+                            fig.update_xaxes(range=[an_mean - an_range, an_mean + an_range], row=3, col=3)
                     
                     # Update Layout
                     fig.update_layout(
